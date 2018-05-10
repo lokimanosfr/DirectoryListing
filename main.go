@@ -32,7 +32,7 @@ func main() {
 	}
 
 }
-
+//Содержит ли каталог подкаталог
 func contains(args []string, substring string) bool {
 	for _, val := range args {
 		if val == substring {
