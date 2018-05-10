@@ -9,6 +9,7 @@ import (
 	"strconv"
 )
 
+//Массив строк дл отправки в result файл
 var allStrings []string
 
 func main() {
