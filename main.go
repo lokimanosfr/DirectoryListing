@@ -1,96 +1,59 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
-	"sort"
-	"strconv"
+	"time"
+
+	"github.com/lokimanosfr/DirectoryListing/scandir"
 )
 
 //Массив строк для отправки в result файл
-var allStrings []string
+// var allStrings []string
+// var outputFile os.File
+var help bool
+var showWithFiles bool
+var outputFile bool
 
 func main() {
-	FileOut, err := os.Create("result.txt")
-	if err != nil {
-		log.Fatal("Cannot create file", err)
-	}
-	defer FileOut.Close()
-	args := os.Args
-	fmt.Print()
+	// FileOut, err := os.Create("result.txt")
+	// if err != nil {
+	// 	log.Fatal("Cannot create file", err)
+	// }
+	// defer FileOut.Close()
 
-	if contains(args, "-f") {
-		recursiveIteration(".", "├───", "", false, false, true)
-	} else {
-		recursiveIteration(".", "├───", "", false, false, false)
-	}
+	// if contains(args, "-tofile") {
 
-	for _, value := range allStrings {
-		FileOut.WriteString(value)
-	}
+	// 	outputFile, err := os.OpenFile("result.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// 	outputFile.
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-}
-//Содержит ли каталог подкаталог
-func contains(args []string, substring string) bool {
-	for _, val := range args {
-		if val == substring {
-			return true
-		}
-	}
-	return false
-}
+	// }
 
-func getLastFileIndex(files []os.FileInfo, withFiles bool) (lastFileIndex int) {
-	for index, file := range files {
-		if withFiles {
-			lastFileIndex = index
-		} else {
-			if file.IsDir() {
-				lastFileIndex = index
-			}
+	flag.BoolVar(&showWithFiles, "f", false, "\tShow with files")
+	flag.BoolVar(&help, "help", false, "\tShow commands")
+	flag.BoolVar(&outputFile, "out", false, "\tOutput to file ")
+	flag.Parse()
+	if help {
 
-		}
+		fmt.Println(">> Commands:")
+		fmt.Println("-f\tShow with files")
+		fmt.Println("-out\tOutput to file result.txt")
+		os.Exit(1)
 	}
 
-	return lastFileIndex
-}
+	t0 := time.Now()
+	scandir.GoScan(showWithFiles, outputFile)
+	t1 := time.Now()
 
-func recursiveIteration(dir, prefix, tab string, isSubdir, last, withFiles bool) {
-	files, _ := ioutil.ReadDir(dir)
-	sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() })
+	fmt.Println("Runtime: ", t1.Sub(t0))
+	// outputFile.Close()
 
-	lastFileIndex := getLastFileIndex(files, withFiles)
-	if isSubdir {
-		if last {
-			tab += "\t"
-		} else {
-			tab += "|" + "\t"
-		}
-		prefix = tab + "├───"
-	}
+	// for _, value := range allStrings {
+	// 	FileOut.WriteString(value)
+	// }
 
-	for i, file := range files {
-		if i == lastFileIndex {
-			prefix = tab + "└───"
-			last = true
-		} else {
-			last = false
-		}
-
-		if file.IsDir() {
-			isSubdir = true
-			fmt.Println(prefix + file.Name())
-			allStrings = append(allStrings, prefix+file.Name()+"\n")
-
-			recursiveIteration(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, last, withFiles)
-		} else {
-			if withFiles {
-				fmt.Println(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
-			}
-			allStrings = append(allStrings, prefix+file.Name()+" ("+strconv.FormatInt(file.Size(), 10)+"b)"+"\n")
-
-		}
-	}
 }
