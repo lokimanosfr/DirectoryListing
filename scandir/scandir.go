@@ -12,15 +12,12 @@ import (
 var filesCount = 0
 var dirCount = 0
 
-//GoScan gf
+//GoScan start point
 func GoScan(showWithFiles, outputFilePath bool) {
 	// args := os.Args
 
-	if showWithFiles {
-		recursiveIteration(".", "├───", "", false, false, true)
-	} else {
-		recursiveIteration(".", "├───", "", false, false, false)
-	}
+	recursiveScan(".", "├───", "", false, false, showWithFiles)
+
 	fmt.Println("Files count: ", filesCount)
 	fmt.Println("Directories count: ", dirCount)
 
@@ -50,7 +47,9 @@ func getLastFileIndex(files []os.FileInfo, withFiles bool) (lastFileIndex int) {
 
 	return lastFileIndex
 }
-func recursiveIteration(dir, prefix, tab string, isSubdir, isLastFile, withFiles bool) {
+
+//Scaning recursively all folders
+func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile, withFiles bool) {
 	files, _ := ioutil.ReadDir(dir)
 	sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() })
 
@@ -83,7 +82,7 @@ func recursiveIteration(dir, prefix, tab string, isSubdir, isLastFile, withFiles
 			// 	panic(err)
 			// }
 			dirCount++
-			recursiveIteration(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, isLastFile, withFiles)
+			recursiveScan(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, isLastFile, withFiles)
 		} else {
 			if withFiles {
 				// if _, err := outputFile.WriteString(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)"); err != nil {

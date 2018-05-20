@@ -45,11 +45,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	t0 := time.Now()
+	tStart := time.Now()
 	scandir.GoScan(showWithFiles, outputFile)
-	t1 := time.Now()
+	tEnd := time.Now()
 
-	fmt.Println("Runtime: ", t1.Sub(t0))
+	fmt.Println("Runtime: ", tEnd.Sub(tStart))
 	// outputFile.Close()
 
 	// for _, value := range allStrings {
