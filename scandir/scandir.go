@@ -4,34 +4,56 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 )
 
 //GoScan is we
-var filesCount = 0
-var dirCount = 0
+var filesCount int
+var dirCount int
+
+var withFiles bool
+var startPrefix = "├───"
+var startTabs = ""
+
+var outToFile bool
+var outputFile *os.File
+var outputFileName = "DirTree.txt"
 
 //GoScan start point
-func GoScan(showWithFiles, outputFilePath bool) {
+func GoScan(startDir string, showWithFiles, outputToFile bool) {
 	// args := os.Args
+	if _, err := os.Stat(startDir); os.IsNotExist(err) {
+		fmt.Printf("Directory %s is not exist\n", startDir)
+		return
+	}
+	withFiles = showWithFiles
+	outToFile = outputToFile
+	if outToFile {
+		var err error
+		outputFile, err = os.Create(outputFileName)
+		defer outputFile.Close()
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			dir := ""
+			if startDir != "." {
+				dir = startDir
+			} else {
+				dir, _ = filepath.Abs(filepath.Dir(os.Args[0]))
+			}
 
-	recursiveScan(".", "├───", "", false, false, showWithFiles)
+			outputFile.WriteString(dir + "\n")
+		}
+	}
+
+	recursiveScan(startDir, startPrefix, startTabs, false, false)
 
 	fmt.Println("Files count: ", filesCount)
 	fmt.Println("Directories count: ", dirCount)
 
 }
-
-// //Содержит ли каталог подкаталог
-// func contains(args []string, substring string) bool {
-// 	for _, val := range args {
-// 		if val == substring {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
 
 func getLastFileIndex(files []os.FileInfo, withFiles bool) (lastFileIndex int) {
 	for index, file := range files {
@@ -49,7 +71,7 @@ func getLastFileIndex(files []os.FileInfo, withFiles bool) (lastFileIndex int) {
 }
 
 //Scaning recursively all folders
-func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile, withFiles bool) {
+func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile bool) {
 	files, _ := ioutil.ReadDir(dir)
 	sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() })
 
@@ -74,25 +96,21 @@ func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile, withFiles bool
 
 		if file.IsDir() {
 			isSubdir = true
-			fmt.Println(prefix + file.Name())
-			// allStrings = append(allStrings, prefix+file.Name()+"\n")
-			// if _, err := outputFile.WriteString(prefix + file.Name() + "\n"); err != nil {
-			// _, err := outputFile.WriteString("DOWN")
-			// if err != nil {
-			// 	panic(err)
-			// }
+			// fmt.Println(prefix + file.Name())
+			if outToFile {
+				outputFile.WriteString(prefix + file.Name() + "\n")
+
+			}
 			dirCount++
-			recursiveScan(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, isLastFile, withFiles)
+			recursiveScan(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, isLastFile)
 		} else {
 			if withFiles {
-				// if _, err := outputFile.WriteString(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)"); err != nil {
-				// _, err := outputFile.WriteString("HI")
-				// if err != nil {
-				// 	panic(err)
-				// }
+
 				filesCount++
-				fmt.Println(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
-				// allStrings = append(allStrings, prefix+file.Name()+" ("+strconv.FormatInt(file.Size(), 10)+"b)"+"\n")
+				// fmt.Println(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
+				if outToFile {
+					outputFile.WriteString(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)" + "\n")
+				}
 			}
 
 		}

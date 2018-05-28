@@ -6,3 +6,4 @@ perftest
 *.exe
 *.out
 *.pdf
+.vscode
