@@ -4,112 +4,192 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 )
 
-//GoScan is we
-var filesCount int
-var dirCount int
+const (
+	skip = "System Volume Information"
+)
 
-var withFiles bool
-var startPrefix = "├───"
-var startTabs = ""
+var (
+	filesCount int //Количество найденых файлов
+	dirCount   int //Количество найденых каталогов
 
-var outToFile bool
-var outputFile *os.File
-var outputFileName = "DirTree.txt"
+	startPrefix string //Разделитель для построения дерева
+	startTabs   string //Начальный отступ
 
-//GoScan start point
-func GoScan(startDir string, showWithFiles, outputToFile bool) {
-	// args := os.Args
-	if _, err := os.Stat(startDir); os.IsNotExist(err) {
-		fmt.Printf("Directory %s is not exist\n", startDir)
+	outToFile bool //вывести в файл?
+	//Файл для вывода
+	outputFileName string //Имя выходного файла
+)
+
+var scaner Scan
+
+type dir struct {
+	Path     string
+	isSubdir bool
+	weight   int
+}
+
+//Scan dsds
+type Scan struct {
+	Dir           dir
+	ShowWithFiles bool
+	OutputToFile  bool
+	OnDisplay     bool
+	prop          prop
+}
+type prop struct {
+	prefix         string
+	tab            string
+	outputFileName string
+	outputFile     *os.File
+
+	isLastFile    bool
+	pathSeparator string
+}
+
+func initScaner(p *Scan) {
+
+	p.prop.prefix = "├───"
+	p.prop.outputFileName = "DirTree.txt"
+	if p.OutputToFile {
+		p.prop.outputFile, _ = os.Create(scaner.prop.outputFileName)
+	}
+
+	p.Dir.isSubdir = false
+	p.prop.isLastFile = false
+	p.prop.tab = ""
+	p.prop.pathSeparator = string(os.PathSeparator)
+
+	p.Dir.Path = "."
+
+}
+
+//GoScan Точка входа для пакета
+func (p Scan) GoScan() {
+	initScaner(&p)
+	if !p.Dir.Exist() {
+		fmt.Printf("Directory %s is not exist\n", p.Dir.Path)
 		return
 	}
-	withFiles = showWithFiles
-	outToFile = outputToFile
-	if outToFile {
-		var err error
-		outputFile, err = os.Create(outputFileName)
-		defer outputFile.Close()
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			dir := ""
-			if startDir != "." {
-				dir = startDir
-			} else {
-				dir, _ = filepath.Abs(filepath.Dir(os.Args[0]))
-			}
 
-			outputFile.WriteString(dir + "\n")
-		}
-	}
-
-	recursiveScan(startDir, startPrefix, startTabs, false, false)
+	recursiveScan(p)
 
 	fmt.Println("Files count: ", filesCount)
 	fmt.Println("Directories count: ", dirCount)
 
 }
 
-func getLastFileIndex(files []os.FileInfo, withFiles bool) (lastFileIndex int) {
-	for index, file := range files {
-		if withFiles {
-			lastFileIndex = index
-		} else {
-			if file.IsDir() {
-				lastFileIndex = index
-			}
-
-		}
+//Exist Возвращает true если существует
+func (p dir) Exist() bool {
+	if _, err := os.Stat(p.Path); os.IsNotExist(err) {
+		return false
 	}
-
-	return lastFileIndex
+	return true
 }
 
-//Scaning recursively all folders
-func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile bool) {
-	files, _ := ioutil.ReadDir(dir)
-	sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() })
+func skipDir(p Scan) bool {
+	splitedPath := strings.Split(p.Dir.Path, p.prop.pathSeparator)
+	if splitedPath[len(splitedPath)-1] == skip {
+		return true
+	}
+	return false
+}
 
-	lastFileIndex := getLastFileIndex(files, withFiles)
+func checkFolder(p Scan) ([]os.FileInfo, bool, int) {
+	if skipDir(p) {
+		return nil, false, 0
+	}
 
-	if isSubdir {
-		if isLastFile {
-			tab += "\t"
-		} else {
-			tab += "|" + "\t"
+	files, err := ioutil.ReadDir(p.Dir.Path)
+	var onlyDirs []os.FileInfo
+	if err != nil {
+		fmt.Println(err)
+	}
+	count := len(files)
+	if count == 0 {
+		return files, false, 0
+	}
+	for i, file := range files {
+		if p.ShowWithFiles {
+			return files, true, count - 1
+		}
+		if file.IsDir() && !p.ShowWithFiles {
+			onlyDirs = append(onlyDirs, files[i])
 		}
 
 	}
-	prefix = tab + "├───"
-	for i, file := range files {
-		if i == lastFileIndex {
-			prefix = tab + "└───"
-			isLastFile = true
+	if p.ShowWithFiles == false && len(onlyDirs) != 0 {
+		return onlyDirs, true, len(onlyDirs) - 1
+	}
+	return files, false, count - 1
+
+}
+
+//recursiveScan рекурсивный проход по каталогу, при нахождении подкаталога
+//производится рекурсивный вызов функции с новым путем и аргументов isSubdir=true
+//В случае если достигнут последний файл в каталоге, вызывается
+// func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile bool) {
+func recursiveScan(p Scan) {
+
+	files, _ := ioutil.ReadDir(p.Dir.Path)
+	files, goInside, lastFileIndex := checkFolder(p)
+	if !goInside {
+		return
+	}
+	if lastFileIndex != 0 {
+		sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() }) //Сортировка содержимого каталога A-Z А-Я
+	}
+
+	// p.prop.prefix = p.prop.tab + "├───"
+	if p.Dir.isSubdir {
+		if p.prop.isLastFile {
+			p.prop.tab += "\t"
 		} else {
-			isLastFile = false
+			p.prop.tab += "|" + "\t"
+		}
+
+	}
+	for i, file := range files {
+
+		if i == lastFileIndex {
+			p.prop.prefix = p.prop.tab + "└───"
+			p.prop.isLastFile = true
+		} else {
+			p.prop.prefix = p.prop.tab + "├───"
+			p.prop.isLastFile = false
 		}
 
 		if file.IsDir() {
-			isSubdir = true
-			// fmt.Println(prefix + file.Name())
-			if outToFile {
-				outputFile.WriteString(prefix + file.Name() + "\n")
 
+			p.Dir.isSubdir = true
+			if p.OnDisplay {
+				fmt.Println(p.prop.prefix + file.Name())
+			}
+
+			if p.OutputToFile {
+				p.prop.outputFile.WriteString(p.prop.prefix + file.Name() + "\n")
 			}
 			dirCount++
-			recursiveScan(dir+string(os.PathSeparator)+file.Name(), prefix, tab, isSubdir, isLastFile)
+			p.Dir.Path += p.prop.pathSeparator + file.Name()
+			recursiveScan(p)
+			p.Dir.isSubdir = false
+			var tmp = strings.Split(p.Dir.Path, p.prop.pathSeparator)
+			p.Dir.Path = strings.Join(tmp[:len(tmp)-1], p.prop.pathSeparator)
+
 		} else {
-			if withFiles {
+			if p.ShowWithFiles {
 
 				filesCount++
-				// fmt.Println(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
-				if outToFile {
-					outputFile.WriteString(prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)" + "\n")
+				if p.OnDisplay {
+					fmt.Println(p.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
+				}
+
+				if p.OutputToFile {
+					p.prop.outputFile.WriteString(p.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)" + "\n")
 				}
 			}
 
