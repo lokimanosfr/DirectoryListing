@@ -10,22 +10,18 @@ import (
 )
 
 const (
-	skip = "System Volume Information"
+	skipSVI = "System Volume Information"
+
+	prefMiddle = "├───" //Разделитель между неконечными файлами
+	prefEnd    = "└───" //Разделитель для конечного файла
+	prefSpace  = "\t"   //Отступ между уровнями
+	prefLine   = "|"    //Ведущая линия между уровнями
 )
 
 var (
 	filesCount int //Количество найденых файлов
 	dirCount   int //Количество найденых каталогов
-
-	startPrefix string //Разделитель для построения дерева
-	startTabs   string //Начальный отступ
-
-	outToFile bool //вывести в файл?
-	//Файл для вывода
-	outputFileName string //Имя выходного файла
 )
-
-var scaner Scan
 
 type dir struct {
 	Path     string
@@ -43,7 +39,7 @@ type Scan struct {
 }
 type prop struct {
 	prefix         string
-	tab            string
+	space          string
 	outputFileName string
 	outputFile     *os.File
 
@@ -51,92 +47,97 @@ type prop struct {
 	pathSeparator string
 }
 
-func initScaner(p *Scan) {
+func initScaner(scan *Scan) {
 
-	p.prop.prefix = "├───"
-	p.prop.outputFileName = "DirTree.txt"
-	if p.OutputToFile {
-		p.prop.outputFile, _ = os.Create(scaner.prop.outputFileName)
+	scan.prop.prefix = prefMiddle
+	scan.prop.pathSeparator = string(os.PathSeparator)
+	scan.prop.outputFileName = "." + scan.prop.pathSeparator + "DirTree.txt"
+	if scan.OutputToFile {
+		var err error
+		scan.prop.outputFile, err = os.Create(scan.prop.outputFileName)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 
-	p.Dir.isSubdir = false
-	p.prop.isLastFile = false
-	p.prop.tab = ""
-	p.prop.pathSeparator = string(os.PathSeparator)
-
-	p.Dir.Path = "."
+	scan.Dir.isSubdir = false
+	scan.prop.isLastFile = false
+	scan.prop.space = ""
 
 }
 
 //GoScan Точка входа для пакета
-func (p Scan) GoScan() {
-	initScaner(&p)
-	if !p.Dir.Exist() {
-		fmt.Printf("Directory %s is not exist\n", p.Dir.Path)
+func (scan Scan) GoScan() {
+	initScaner(&scan)
+	if !scan.Dir.Exist() {
+		fmt.Printf("Directory %s is not exist\n", scan.Dir.Path)
 		return
 	}
 
-	recursiveScan(p)
+	recursiveScan(scan)
 
 	fmt.Println("Files count: ", filesCount)
 	fmt.Println("Directories count: ", dirCount)
 
 }
 
-//Exist Возвращает true если существует
-func (p dir) Exist() bool {
-	if _, err := os.Stat(p.Path); os.IsNotExist(err) {
+//Exist Возвращает true если файл существует
+func (scan dir) Exist() bool {
+	if _, err := os.Stat(scan.Path); os.IsNotExist(err) {
 		return false
 	}
 	return true
 }
 
-func skipDir(p Scan) bool {
-	splitedPath := strings.Split(p.Dir.Path, p.prop.pathSeparator)
-	if splitedPath[len(splitedPath)-1] == skip {
+//skipDir Возвращает true если файл находится в исключениях
+func skipDir(scan Scan) bool {
+	splitedPath := strings.Split(scan.Dir.Path, scan.prop.pathSeparator)
+	if splitedPath[len(splitedPath)-1] == skipSVI {
 		return true
 	}
 	return false
 }
 
-func checkFolder(p Scan) ([]os.FileInfo, bool, int) {
-	if skipDir(p) {
+//chekFolder Возвращает:
+//[]os.Fileinfo - возвращается только тогда, когда запрашиваются только директории.
+//bool - признак, проваливаться ли в директорию. Возвращает false только когда файл
+//содержится в искулючениях или директорию пуста.
+//int - индекс последнего файла, для своевременной остановки цикла в рекурсивной функции.
+func checkFolder(scan Scan) ([]os.FileInfo, bool, int) {
+	if skipDir(scan) {
 		return nil, false, 0
 	}
 
-	files, err := ioutil.ReadDir(p.Dir.Path)
+	files, err := ioutil.ReadDir(scan.Dir.Path)
 	var onlyDirs []os.FileInfo
 	if err != nil {
 		fmt.Println(err)
 	}
-	count := len(files)
-	if count == 0 {
+	lastIndex := len(files)
+	if lastIndex == 0 {
 		return files, false, 0
 	}
 	for i, file := range files {
-		if p.ShowWithFiles {
-			return files, true, count - 1
+		if scan.ShowWithFiles {
+			return files, true, lastIndex - 1
 		}
-		if file.IsDir() && !p.ShowWithFiles {
+		if file.IsDir() && !scan.ShowWithFiles {
 			onlyDirs = append(onlyDirs, files[i])
 		}
 
 	}
-	if p.ShowWithFiles == false && len(onlyDirs) != 0 {
+	if scan.ShowWithFiles == false && len(onlyDirs) != 0 {
 		return onlyDirs, true, len(onlyDirs) - 1
 	}
-	return files, false, count - 1
+	return files, false, lastIndex - 1
 
 }
 
-//recursiveScan рекурсивный проход по каталогу, при нахождении подкаталога
-//производится рекурсивный вызов функции с новым путем и аргументов isSubdir=true
-//В случае если достигнут последний файл в каталоге, вызывается
-// func recursiveScan(dir, prefix, tab string, isSubdir, isLastFile bool) {
-func recursiveScan(p Scan) {
-
-	files, _ := ioutil.ReadDir(p.Dir.Path)
-	files, goInside, lastFileIndex := checkFolder(p)
+//recursiveScan Рекурсивный проход по каталогу, при нахождении подкаталога
+//производится вызов функции с новым путем и isSubdir=true
+//В случае если достигнут последний файл в каталоге, возвращается на уровень выше
+func recursiveScan(scan Scan) {
+	files, goInside, lastFileIndex := checkFolder(scan)
 	if !goInside {
 		return
 	}
@@ -144,52 +145,51 @@ func recursiveScan(p Scan) {
 		sort.Slice(files, func(i int, j int) bool { return files[i].Name() > files[j].Name() }) //Сортировка содержимого каталога A-Z А-Я
 	}
 
-	// p.prop.prefix = p.prop.tab + "├───"
-	if p.Dir.isSubdir {
-		if p.prop.isLastFile {
-			p.prop.tab += "\t"
+	if scan.Dir.isSubdir {
+		if scan.prop.isLastFile {
+			scan.prop.space += prefSpace
 		} else {
-			p.prop.tab += "|" + "\t"
+			scan.prop.space += prefLine + prefSpace
 		}
 
 	}
 	for i, file := range files {
 
 		if i == lastFileIndex {
-			p.prop.prefix = p.prop.tab + "└───"
-			p.prop.isLastFile = true
+			scan.prop.prefix = scan.prop.space + prefEnd
+			scan.prop.isLastFile = true
 		} else {
-			p.prop.prefix = p.prop.tab + "├───"
-			p.prop.isLastFile = false
+			scan.prop.prefix = scan.prop.space + prefMiddle
+			scan.prop.isLastFile = false
 		}
 
 		if file.IsDir() {
 
-			p.Dir.isSubdir = true
-			if p.OnDisplay {
-				fmt.Println(p.prop.prefix + file.Name())
+			scan.Dir.isSubdir = true
+			if scan.OnDisplay {
+				fmt.Println(scan.prop.prefix + file.Name())
 			}
 
-			if p.OutputToFile {
-				p.prop.outputFile.WriteString(p.prop.prefix + file.Name() + "\n")
+			if scan.OutputToFile {
+				scan.prop.outputFile.WriteString(scan.prop.prefix + file.Name() + "\n")
 			}
 			dirCount++
-			p.Dir.Path += p.prop.pathSeparator + file.Name()
-			recursiveScan(p)
-			p.Dir.isSubdir = false
-			var tmp = strings.Split(p.Dir.Path, p.prop.pathSeparator)
-			p.Dir.Path = strings.Join(tmp[:len(tmp)-1], p.prop.pathSeparator)
+			scan.Dir.Path += scan.prop.pathSeparator + file.Name()
+			recursiveScan(scan)
+			scan.Dir.isSubdir = false
+			var tmp = strings.Split(scan.Dir.Path, scan.prop.pathSeparator)
+			scan.Dir.Path = strings.Join(tmp[:len(tmp)-1], scan.prop.pathSeparator)
 
 		} else {
-			if p.ShowWithFiles {
+			if scan.ShowWithFiles {
 
 				filesCount++
-				if p.OnDisplay {
-					fmt.Println(p.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
+				if scan.OnDisplay {
+					fmt.Println(scan.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)")
 				}
 
-				if p.OutputToFile {
-					p.prop.outputFile.WriteString(p.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)" + "\n")
+				if scan.OutputToFile {
+					scan.prop.outputFile.WriteString(scan.prop.prefix + file.Name() + " (" + strconv.FormatInt(file.Size(), 10) + "b)" + "\n")
 				}
 			}
 
